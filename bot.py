@@ -68,29 +68,67 @@ async def entrypoint(ctx: JobContext):
     agent.start(ctx.room, participant)
     logger.info("Agent started, simulating patient.")
 
-    # Set up recording of the user's and agent's audio tracks
-    import wave
+
+    # Set up recording of the audio tracks
     from livekit.rtc import AudioStream
     import livekit.rtc
+    import av
+    import os
 
     @ctx.room.on("track_subscribed")
     def on_track_subscribed(track, publication, participant):
-        if track.kind == livekit.rtc.TrackKind.KIND_AUDIO:  # assuming livekit.rtc is imported
+        if track.kind == livekit.rtc.TrackKind.KIND_AUDIO:
             audio_stream = AudioStream(track)
 
-            # Start background task to consume and save the audio
             async def consume_audio():
-                # Note: this is a simple mock recording placeholder for the assignment.
-                # In a real scenario, this would transcode raw PCM frames to MP3/OGG using av or pydub.
                 filename = f"recordings/call_{ctx.room.name}_{participant.identity}.ogg"
-                with open(filename, "wb") as f:
-                    # Write a dummy header for testing purposes since PCM->OGG is complex
-                    # without external libraries in this limited space
-                    f.write(b"OggS")
-                    async for event in audio_stream:
-                        pass # Here you would encode and write frames
+                os.makedirs("recordings", exist_ok=True)
 
-            asyncio.create_task(consume_audio())
+                # Setup PyAV output container
+                container = av.open(filename, mode='w')
+                stream = container.add_stream('libvorbis', rate=48000)
+
+                try:
+                    async for audio_frame in audio_stream:
+                        # Extract the underlying rtc.AudioFrame data
+                        rtc_frame = audio_frame.frame
+
+                        # Create an PyAV AudioFrame
+                        # The rtc.AudioFrame has properties: sample_rate, num_channels, samples_per_channel, data
+                        import numpy as np
+
+                        # rtc.AudioFrame.data is typically int16
+                        # Ensure to format it correctly for PyAV
+                        data = np.frombuffer(rtc_frame.data, dtype=np.int16)
+
+                        # If stereo, reshape
+                        if rtc_frame.num_channels > 1:
+                            data = data.reshape(-1, rtc_frame.num_channels).T
+                        else:
+                            data = data.reshape(1, -1)
+
+                        av_frame = av.AudioFrame.from_ndarray(data, format='s16', layout='stereo' if rtc_frame.num_channels > 1 else 'mono')
+                        av_frame.sample_rate = rtc_frame.sample_rate
+
+                        # Encode and mux
+                        for packet in stream.encode(av_frame):
+                            container.mux(packet)
+                except asyncio.CancelledError:
+                    pass
+                finally:
+                    # Flush and close
+                    for packet in stream.encode(None):
+                        container.mux(packet)
+                    container.close()
+
+            # Run in background
+            task = asyncio.create_task(consume_audio())
+
+            # Save task to context to prevent garbage collection and allow cancellation if needed
+            if not hasattr(ctx, "recording_tasks"):
+                ctx.recording_tasks = []
+            ctx.recording_tasks.append(task)
+
 
 
     # Record the conversation to a file

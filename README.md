@@ -39,6 +39,8 @@ Ensure your `.env` contains the following:
 
 To run the full simulation (which starts the agent worker and triggers the outbound calls), you can use the provided script or run the components separately.
 
+**Note:** Ensure that `SIP_TRUNK_ID` is set in your `.env` file to correctly route outbound calls.
+
 1. **Start the agent worker:**
 
 Start the LiveKit agent worker which will handle incoming jobs (in a separate terminal):
