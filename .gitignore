@@ -5,3 +5,8 @@ __pycache__/
 venv/
 .pytest_cache/
 .mypy_cache/
+node_modules/
+screenshot.js
+screenshot.png
+server.log
+test_multiplayer.js

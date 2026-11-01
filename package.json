@@ -1,0 +1,28 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "description": "A Python/LiveKit prototype for outbound test calls to a medical receptionist agent, using separate speech-to-text, language-model, and text-to-speech stages.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zech-dexos/underpaid-freework.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/zech-dexos/underpaid-freework/issues"
+  },
+  "homepage": "https://github.com/zech-dexos/underpaid-freework#readme",
+  "dependencies": {
+    "express": "^5.3.0",
+    "playwright": "^1.64.1",
+    "puppeteer": "^25.16.0",
+    "socket.io": "^4.8.4"
+  }
+}
