@@ -99,31 +99,37 @@ class Player {
         return false;
     }
 
-    update(worldSpeed) {
+    update(deltaTime, worldSpeed, worldX) {
         if (this.status !== 'playing') return;
 
         if (this.isLocal) {
             // Local Physics
+            // Time-based updates for consistent feel across refresh rates
+            const timeScale = deltaTime / 16.666; // Normalize to ~60fps
+
             if (this.isDashing) {
-                this.dashTimer--;
+                this.dashTimer -= timeScale;
                 if (this.dashTimer <= 0) {
                     this.isDashing = false;
                     this.dashCooldown = 30; // frames
                 }
             } else {
-                this.vy += this.gravity;
-                if (this.dashCooldown > 0) this.dashCooldown--;
+                this.vy += this.gravity * timeScale;
+                if (this.dashCooldown > 0) this.dashCooldown -= timeScale;
             }
 
-            this.y += this.vy;
+            this.y += this.vy * timeScale;
 
-            // Score based on survival time/distance (worldSpeed applied per frame)
-            this.score += Math.floor(worldSpeed * 0.1);
+            // Score strictly based on distance traveled + bonuses, not frame rate
+            const distanceScore = Math.floor(worldX * 0.1);
+            // Assuming this.baseScore stores bonuses from stars/obstacles
+            this.score = distanceScore + (this.baseScore || 0);
 
         } else {
             // Remote Interpolation
-            this.y += (this.targetY - this.y) * 0.3;
-            this.x += (this.targetX - this.x) * 0.3;
+            const timeScale = deltaTime / 16.666;
+            this.y += (this.targetY - this.y) * 0.3 * timeScale;
+            this.x += (this.targetX - this.x) * 0.3 * timeScale;
         }
     }
 
@@ -219,9 +225,22 @@ class World {
         }
     }
 
-    update() {
-        this.worldX += this.speed;
-        this.speed += 0.001; // Slowly increase difficulty
+    update(deltaTime, serverStartTime) {
+        // Time-based world progression to ensure perfect sync regardless of refresh rate
+        const now = Date.now();
+        // Fallback if serverStartTime is not provided yet
+        const elapsed = serverStartTime ? (now - serverStartTime) : 0;
+
+        // Base speed (pixels per ms)
+        const baseSpeed = 8 / 16.666;
+        // Acceleration (pixels per ms per ms)
+        const acceleration = 0.001 / 16.666 / 16.666;
+
+        // Calculate exact world X based on time elapsed
+        this.speed = (8 + (elapsed / 16.666) * 0.001);
+
+        // Integrating v = v0 + at gives x = v0*t + 0.5*a*t^2
+        this.worldX = (baseSpeed * elapsed) + (0.5 * acceleration * elapsed * elapsed);
 
         this.generateChunk();
 
@@ -300,6 +319,8 @@ class GameEngine {
         this.localPlayerId = null;
         this.world = null;
         this.isRunning = false;
+        this.serverStartTime = 0;
+        this.lastFrameTime = 0;
 
         this.onPlayerDeath = null; // Callback for multiplayer
         this.onPlayerUpdate = null; // Callback for multiplayer
@@ -311,10 +332,12 @@ class GameEngine {
         this.canvas.height = window.innerHeight;
     }
 
-    start(seed, playersData, localId) {
+    start(seed, playersData, localId, serverStartTime) {
         this.world = new World(seed);
         this.players = {};
         this.localPlayerId = localId;
+        this.serverStartTime = serverStartTime || Date.now();
+        this.lastFrameTime = performance.now();
 
         for (let id in playersData) {
             this.players[id] = new Player(id, playersData[id].color, id === localId);
@@ -326,7 +349,10 @@ class GameEngine {
         }
 
         this.isRunning = true;
-        this.loop();
+        requestAnimationFrame((time) => {
+            this.lastFrameTime = time;
+            this.loop(time);
+        });
     }
 
     stop() {
@@ -400,7 +426,8 @@ class GameEngine {
                     if (local.isDashing && o.destructible) {
                         // Destroy obstacle, add score
                         o.x = -1000; // Move out of view to cull
-                        local.score += 500;
+                        local.baseScore = (local.baseScore || 0) + 500;
+                        local.score = Math.floor(this.world.worldX * 0.1) + local.baseScore;
                     } else {
                         this.die(local);
                     }
@@ -414,7 +441,8 @@ class GameEngine {
                 const dist = Math.hypot((local.x + local.width/2) - screenX, (local.y + local.height/2) - s.y);
                 if (dist < s.radius + local.width/2) {
                     s.collected = true;
-                    local.score += 1000;
+                    local.baseScore = (local.baseScore || 0) + 1000;
+                    local.score = Math.floor(this.world.worldX * 0.1) + local.baseScore;
                     // Note: Could play star sound here
                 }
             }
@@ -447,18 +475,25 @@ class GameEngine {
         }
     }
 
-    loop() {
+    loop(currentTime) {
         if (!this.isRunning) return;
+
+        // Calculate delta time
+        const deltaTime = currentTime - this.lastFrameTime;
+        this.lastFrameTime = currentTime;
+
+        // Cap deltaTime to prevent huge jumps if tab was inactive
+        const cappedDeltaTime = Math.min(deltaTime, 50);
 
         // Clear canvas
         this.ctx.fillStyle = '#0b001a';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         // Update
-        this.world.update();
+        this.world.update(cappedDeltaTime, this.serverStartTime);
 
         for (let id in this.players) {
-            this.players[id].update(this.world.speed);
+            this.players[id].update(cappedDeltaTime, this.world.speed, this.world.worldX);
         }
 
         this.updatePhysics();
@@ -482,7 +517,7 @@ class GameEngine {
             this.players[this.localPlayerId].draw(this.ctx);
         }
 
-        requestAnimationFrame(() => this.loop());
+        requestAnimationFrame((time) => this.loop(time));
     }
 }
 

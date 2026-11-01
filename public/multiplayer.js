@@ -186,6 +186,12 @@ socket.on('playerStateUpdate', (data) => {
     }
 });
 
+socket.on('scoreUpdate', (data) => {
+    if (gameEngine.isRunning && gameEngine.players && gameEngine.players[data.id]) {
+        gameEngine.players[data.id].score = data.score;
+    }
+});
+
 socket.on('playerDied', (data) => {
     if (gameEngine.isRunning) {
         gameEngine.setRemotePlayerDead(data.id, data.score);
