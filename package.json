@@ -1,9 +1,10 @@
 {
   "name": "app",
   "version": "1.0.0",
-  "description": "A Python/LiveKit prototype for outbound test calls to a medical receptionist agent, using separate speech-to-text, language-model, and text-to-speech stages.",
-  "main": "index.js",
+  "description": "Neon Unicorn multiplayer game",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
